@@ -31,6 +31,11 @@ void ToolForm::setSerial(const QString &serial)
     updateCameraMode();
 }
 
+void ToolForm::setFilePanelVisible(bool visible)
+{
+    ui->filePanelBtn->setChecked(visible);
+}
+
 bool ToolForm::isHost()
 {
     return m_isHost;
@@ -64,6 +69,7 @@ void ToolForm::updateCameraMode()
 void ToolForm::initStyle()
 {
     IconHelper::Instance()->SetIcon(ui->fullScreenBtn, QChar(0xf0b2), 15);
+    IconHelper::Instance()->SetIcon(ui->filePanelBtn, QChar(0xf07b), 15);
     IconHelper::Instance()->SetIcon(ui->menuBtn, QChar(0xf096), 15);
     IconHelper::Instance()->SetIcon(ui->homeBtn, QChar(0xf1db), 15);
     //IconHelper::Instance()->SetIcon(ui->returnBtn, QChar(0xf104), 15);
@@ -146,6 +152,14 @@ void ToolForm::on_fullScreenBtn_clicked()
     }
 
     dynamic_cast<VideoForm*>(parent())->switchFullScreen();
+}
+
+void ToolForm::on_filePanelBtn_clicked()
+{
+    auto videoForm = dynamic_cast<VideoForm*>(parent());
+    if (videoForm) {
+        videoForm->toggleFilePanel();
+    }
 }
 
 void ToolForm::on_returnBtn_clicked()

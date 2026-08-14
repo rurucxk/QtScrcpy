@@ -81,8 +81,6 @@ Dialog::Dialog(QWidget *parent) : QWidget(parent), ui(new Ui::Widget)
         move(availableGeometry.x() + (availableGeometry.width() - width()) / 2,
              availableGeometry.y() + (availableGeometry.height() - height()) / 2);
     }
-    on_updateDevice_clicked();
-
     connect(&m_autoUpdatetimer, &QTimer::timeout, this, &Dialog::on_updateDevice_clicked);
     if (ui->autoUpdatecheckBox->isChecked()) {
         m_autoUpdatetimer.start(5000);
@@ -119,6 +117,10 @@ Dialog::Dialog(QWidget *parent) : QWidget(parent), ui(new Ui::Widget)
                     ui->serialBox->addItem(item);
                     ui->connectedPhoneList->addItem(Config::getInstance().getNickName(item) + "-" + item);
                 }
+                if (m_autoConnectPending && findDeviceFromeSerialBox(false) >= 0) {
+                    m_autoConnectPending = false;
+                    QTimer::singleShot(0, this, &Dialog::on_usbConnectBtn_clicked);
+                }
             } else if (args.contains("show") && args.contains("wlan0")) {
                 QString ip = m_adb.getDeviceIPFromStdOut();
                 if (ip.isEmpty()) {
@@ -147,6 +149,8 @@ Dialog::Dialog(QWidget *parent) : QWidget(parent), ui(new Ui::Widget)
             outLog(log, newLine);
         }
     });
+    m_autoConnectPending = ui->autoConnectCheckBox->isChecked();
+    on_updateDevice_clicked();
 
     m_hideIcon = new QSystemTrayIcon(this);
     m_hideIcon->setIcon(QIcon(":/image/tray/logo.png"));
@@ -421,6 +425,7 @@ void Dialog::updateBootConfig(bool toView)
         ui->stayAwakeCheck->setChecked(config.keepAlive);
         ui->useSingleModeCheck->setChecked(config.simpleMode);
         ui->autoUpdatecheckBox->setChecked(config.autoUpdateDevice);
+        ui->autoConnectCheckBox->setChecked(config.autoConnectOnStartup);
         ui->showToolbar->setChecked(config.showToolbar);
         ui->decodeModeBox->setCurrentIndex(config.decodeMode);
         ui->videoSourceBox->setCurrentIndex(config.videoSource);
@@ -441,7 +446,7 @@ void Dialog::updateBootConfig(bool toView)
         }
         updateVideoSourceUi();
     } else {
-        UserBootConfig config;
+        UserBootConfig config = Config::getInstance().getUserBootConfig();
 
         config.bitRate = getBitRate();
         config.maxSizeIndex = ui->maxSizeBox->currentIndex();
@@ -458,6 +463,7 @@ void Dialog::updateBootConfig(bool toView)
         config.keepAlive = ui->stayAwakeCheck->isChecked();
         config.simpleMode = ui->useSingleModeCheck->isChecked();
         config.autoUpdateDevice = ui->autoUpdatecheckBox->isChecked();
+        config.autoConnectOnStartup = ui->autoConnectCheckBox->isChecked();
         config.showToolbar = ui->showToolbar->isChecked();
         config.decodeMode = ui->decodeModeBox->currentIndex();
         config.videoSource = ui->videoSourceBox->currentIndex();
@@ -1316,6 +1322,13 @@ void Dialog::on_autoUpdatecheckBox_toggled(bool checked)
     } else {
         m_autoUpdatetimer.stop();
     }
+}
+
+void Dialog::on_autoConnectCheckBox_toggled(bool checked)
+{
+    UserBootConfig config = Config::getInstance().getUserBootConfig();
+    config.autoConnectOnStartup = checked;
+    Config::getInstance().setUserBootConfig(config);
 }
 
 void Dialog::loadIpHistory()

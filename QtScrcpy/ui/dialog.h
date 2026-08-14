@@ -71,6 +71,7 @@ private slots:
     void on_installSndcpyBtn_clicked();
 
     void on_autoUpdatecheckBox_toggled(bool checked);
+    void on_autoConnectCheckBox_toggled(bool checked);
 
     void on_videoSourceBox_currentIndexChanged(int index);
     void on_refreshCameraBtn_clicked();
@@ -123,6 +124,7 @@ private:
     QAction *m_quit;
     AudioOutput m_audioOutput;
     QTimer m_autoUpdatetimer;
+    bool m_autoConnectPending = false;
 };
 
 #endif // DIALOG_H
