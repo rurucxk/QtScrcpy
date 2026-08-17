@@ -77,6 +77,13 @@ xcopy %config_path% %publish_path%config\ /E /Y
 :: 添加qt依赖包
 windeployqt %publish_path%\QtScrcpy.exe
 
+:: 发布包只保留运行文件，并附带项目许可证
+del /q "%publish_path%\*.pdb"
+del /q "%publish_path%\*.ilk"
+del /q "%publish_path%\*.lib"
+copy /Y "%script_path%..\..\LICENSE" "%publish_path%\LICENSE.txt"
+copy /Y "%script_path%..\..\QtScrcpy\QtScrcpyCore\LICENSE" "%publish_path%\LICENSE-QtScrcpyCore.txt"
+
 :: 删除多余qt依赖包
 rmdir /s/q %publish_path%\iconengines
 rmdir /s/q %publish_path%\translations
