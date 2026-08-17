@@ -1,0 +1,43 @@
+name: Sync file sidebar with upstream
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 0 * * *"
+  push:
+    branches:
+      - dev
+    paths:
+      - .github/workflows/sync-file-sidebar.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-file-sidebar-with-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.repository == 'rurucxk/QtScrcpy'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/file-sidebar
+          fetch-depth: 0
+
+      - name: Rebase onto upstream dev
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin feature/file-sidebar
+          remote_head="$(git rev-parse origin/feature/file-sidebar)"
+          git fetch https://github.com/barry-ran/QtScrcpy.git dev
+          git rebase FETCH_HEAD
+          git push \
+            --force-with-lease=refs/heads/feature/file-sidebar:"${remote_head}" \
+            origin HEAD:refs/heads/feature/file-sidebar
