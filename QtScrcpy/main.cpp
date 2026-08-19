@@ -63,6 +63,12 @@ int main(int argc, char *argv[])
     // set on QApplication before
     // bug: config path is error on mac
     int opengl = Config::getInstance().getDesktopOpenGL();
+#ifdef Q_OS_WIN32
+    // ANGLE avoids blank OpenGL widgets in many Windows remote sessions.
+    if (-1 == opengl) {
+        opengl = 1;
+    }
+#endif
     if (0 == opengl) {
         QApplication::setAttribute(Qt::AA_UseSoftwareOpenGL);
     } else if (1 == opengl) {
