@@ -316,6 +316,38 @@
         <source>file does not exist</source>
         <translation>文件不存在</translation>
     </message>
+    <message>
+        <source>parent directory</source>
+        <translation>上级目录</translation>
+    </message>
+    <message>
+        <source>refresh</source>
+        <translation>刷新</translation>
+    </message>
+    <message>
+        <source>sort descending</source>
+        <translation>降序排列</translation>
+    </message>
+    <message>
+        <source>sort ascending</source>
+        <translation>升序排列</translation>
+    </message>
+    <message>
+        <source>upload file</source>
+        <translation>上传文件</translation>
+    </message>
+    <message>
+        <source>download file</source>
+        <translation>下载文件</translation>
+    </message>
+    <message>
+        <source>new directory</source>
+        <translation>新建目录</translation>
+    </message>
+    <message>
+        <source>delete</source>
+        <translation>删除</translation>
+    </message>
 </context>
 <context>
     <name>Widget</name>

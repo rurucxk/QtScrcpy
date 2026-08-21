@@ -4,6 +4,7 @@
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QDir>
+#include <QEvent>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QInputDialog>
@@ -186,6 +187,7 @@ void VideoForm::initFilePanel()
         button->setFixedSize(30, 30);
         button->setStyleSheet("padding: 0;");
         button->setToolTip(toolTip);
+        button->installEventFilter(this);
         IconHelper::Instance()->SetIcon(button, icon, 14);
         toolLayout->addWidget(button);
         return button;
@@ -201,8 +203,15 @@ void VideoForm::initFilePanel()
     toolLayout->addStretch();
     panelLayout->addLayout(toolLayout);
 
+    m_fileToolTip = new QLabel(m_filePanel);
+    m_fileToolTip->setAttribute(Qt::WA_TransparentForMouseEvents);
+    m_fileToolTip->setStyleSheet("color: #ffffff; background: #252525; border: 1px solid #3f3f3f; "
+                                 "border-radius: 4px; padding: 5px 7px;");
+    m_fileToolTip->hide();
+
     m_fileList = new QListWidget(m_filePanel);
     m_fileList->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_fileList->setUniformItemSizes(true);
     panelLayout->addWidget(m_fileList, 1);
 
     m_fileStatus = new QLabel(m_filePanel);
@@ -234,7 +243,7 @@ void VideoForm::initFilePanel()
     connect(m_fileSortBtn, &QPushButton::toggled, this, [this](bool descending) {
         IconHelper::Instance()->SetIcon(m_fileSortBtn, QChar(descending ? 0xf15e : 0xf15d), 14);
         m_fileSortBtn->setToolTip(descending ? tr("sort ascending") : tr("sort descending"));
-        m_fileList->sortItems(descending ? Qt::DescendingOrder : Qt::AscendingOrder);
+        sortFileList();
     });
     connect(m_fileUploadBtn, &QPushButton::clicked, this, &VideoForm::uploadFile);
     connect(m_fileDownloadBtn, &QPushButton::clicked, this, &VideoForm::downloadFile);
@@ -243,6 +252,44 @@ void VideoForm::initFilePanel()
     connect(m_fileList, &QListWidget::itemDoubleClicked, this, &VideoForm::openFile);
     connect(m_fileList, &QListWidget::currentItemChanged, this, [this]() { updateFileButtons(); });
     updateFileButtons();
+}
+
+bool VideoForm::eventFilter(QObject *watched, QEvent *event)
+{
+    auto *button = qobject_cast<QPushButton *>(watched);
+    if (button && event->type() == QEvent::Enter) {
+        m_fileToolTip->setText(button->toolTip());
+        m_fileToolTip->adjustSize();
+        m_fileToolTip->move(button->mapTo(m_filePanel, QPoint(0, button->height() + 2)));
+        m_fileToolTip->raise();
+        m_fileToolTip->show();
+    } else if (button && event->type() == QEvent::Leave) {
+        m_fileToolTip->hide();
+    } else if (button && event->type() == QEvent::ToolTip) {
+        return true;
+    }
+    return QWidget::eventFilter(watched, event);
+}
+
+void VideoForm::sortFileList()
+{
+    m_fileList->sortItems(m_fileSortBtn->isChecked() ? Qt::DescendingOrder : Qt::AscendingOrder);
+    auto *current = m_fileList->currentItem();
+    QList<QListWidgetItem *> directories;
+    QList<QListWidgetItem *> files;
+    while (m_fileList->count() > 0) {
+        auto *item = m_fileList->takeItem(0);
+        (item->data(FILE_DIRECTORY_ROLE).toBool() ? directories : files).append(item);
+    }
+    for (auto *item : directories) {
+        m_fileList->addItem(item);
+    }
+    for (auto *item : files) {
+        m_fileList->addItem(item);
+    }
+    if (current) {
+        m_fileList->setCurrentItem(current);
+    }
 }
 
 QString VideoForm::normalizeRemotePath(const QString &path) const
@@ -536,7 +583,7 @@ void VideoForm::onFileAdbResult(int processResult)
             item->setData(FILE_NAME_ROLE, name);
             item->setData(FILE_DIRECTORY_ROLE, directory);
         }
-        m_fileList->sortItems(m_fileSortBtn->isChecked() ? Qt::DescendingOrder : Qt::AscendingOrder);
+        sortFileList();
         m_fileStatus->setText(tr("%1 items").arg(m_fileList->count()));
         updateFileButtons();
         return;
