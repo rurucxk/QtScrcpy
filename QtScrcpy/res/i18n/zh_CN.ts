@@ -641,6 +641,10 @@
         <translation>关闭时退出</translation>
     </message>
     <message>
+        <source>connect on startup</source>
+        <translation>启动自动连接</translation>
+    </message>
+    <message>
         <source>record save path:</source>
         <translation>录像保存路径</translation>
     </message>

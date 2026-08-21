@@ -916,6 +916,13 @@
               </property>
              </widget>
             </item>
+            <item row="2" column="2">
+             <widget class="QCheckBox" name="autoConnectCheckBox">
+              <property name="text">
+               <string>connect on startup</string>
+              </property>
+             </widget>
+            </item>
            </layout>
           </widget>
          </item>

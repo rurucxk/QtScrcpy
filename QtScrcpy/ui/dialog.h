@@ -75,6 +75,7 @@ private slots:
     void on_installSndcpyBtn_clicked();
 
     void on_autoUpdatecheckBox_toggled(bool checked);
+    void on_autoConnectCheckBox_toggled(bool checked);
 
     void on_codecModeBox_currentIndexChanged(int index);
     void on_presetConfigBtn_clicked();
@@ -149,6 +150,7 @@ private:
     quint32 m_prevBitRate = 2000000;
     int m_prevMaxSizeIndex = 0;
     QPointer<PresetConfigDialog> m_presetDialog;
+    bool m_autoConnectPending = false;
 };
 
 #endif // DIALOG_H
