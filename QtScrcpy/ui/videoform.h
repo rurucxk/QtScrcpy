@@ -65,6 +65,7 @@ private:
     void openFile(QListWidgetItem *item);
     void createDirectory();
     void removeFile();
+    void sortFileList();
     void updateFileButtons();
     void setFileBusy(bool busy, const QString &status = QString());
     void onFileAdbResult(int processResult);
@@ -84,6 +85,7 @@ private:
     bool isRectOnAnyScreen(const QRect &rect) const;
 
 protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
     void mousePressEvent(QMouseEvent *event) override;
     void mouseReleaseEvent(QMouseEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
@@ -123,6 +125,7 @@ private:
     QPointer<QLineEdit> m_filePathEdit;
     QPointer<QListWidget> m_fileList;
     QPointer<QLabel> m_fileStatus;
+    QPointer<QLabel> m_fileToolTip;
     QPointer<QPushButton> m_fileUpBtn;
     QPointer<QPushButton> m_fileRefreshBtn;
     QPointer<QPushButton> m_fileSortBtn;
