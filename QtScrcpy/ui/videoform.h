@@ -2,6 +2,7 @@
 #define VIDEOFORM_H
 
 #include <QPointer>
+#include <QTemporaryDir>
 #include <QTimer>
 #include <QWidget>
 
@@ -16,7 +17,13 @@ class ToolForm;
 class FileHandler;
 class QYUVOpenGLWidget;
 class QLabel;
+class QLineEdit;
+class QListWidget;
+class QListWidgetItem;
 class MetalVideoWidget;
+class QPushButton;
+class QSplitter;
+namespace qsc { class AdbProcess; }
 class VideoForm : public QWidget, public qsc::DeviceObserver
 {
     Q_OBJECT
@@ -34,6 +41,7 @@ public:
     void removeBlackRect();
     void showFPS(bool show);
     void switchFullScreen();
+    void toggleFilePanel();
     bool isHost();
 
 private:
@@ -48,6 +56,22 @@ private:
     void updateStyleSheet(bool vertical);
     QMargins getMargins(bool vertical);
     void initUI();
+    void initFilePanel();
+    void setFilePanelVisible(bool visible, bool persist = true);
+    void loadFilePath(const QString &path);
+    void refreshFileList();
+    void uploadFile();
+    void downloadFile();
+    void openFile(QListWidgetItem *item);
+    void createDirectory();
+    void removeFile();
+    void updateFileButtons();
+    void setFileBusy(bool busy, const QString &status = QString());
+    void onFileAdbResult(int processResult);
+    QString normalizeRemotePath(const QString &path) const;
+    QString remoteChildPath(const QString &name) const;
+    bool isValidChildName(const QString &name) const;
+    int filePanelWidth() const;
 
     void showToolForm(bool show = true);
     void moveCenter();
@@ -89,6 +113,19 @@ private:
     QPointer<MetalVideoWidget> m_metalWidget;
 
     QPointer<QLabel> m_fpsLabel;
+    QPointer<QSplitter> m_splitter;
+    QPointer<QWidget> m_filePanel;
+    QPointer<QLineEdit> m_filePathEdit;
+    QPointer<QListWidget> m_fileList;
+    QPointer<QLabel> m_fileStatus;
+    QPointer<QPushButton> m_fileUpBtn;
+    QPointer<QPushButton> m_fileRefreshBtn;
+    QPointer<QPushButton> m_fileSortBtn;
+    QPointer<QPushButton> m_fileUploadBtn;
+    QPointer<QPushButton> m_fileDownloadBtn;
+    QPointer<QPushButton> m_fileMkdirBtn;
+    QPointer<QPushButton> m_fileRemoveBtn;
+    QPointer<qsc::AdbProcess> m_fileAdb;
 
     //inside member
     QSize m_frameSize;
@@ -104,6 +141,13 @@ private:
     bool m_preventAutoResize = false;
     QTimer m_flexResizeTimer;
     QSize m_pendingDisplaySize;
+    enum FileOperation { FO_NONE, FO_LIST, FO_PUSH, FO_PULL, FO_OPEN, FO_MKDIR, FO_REMOVE };
+    FileOperation m_fileOperation = FO_NONE;
+    QString m_currentFilePath = "/sdcard";
+    QString m_pendingRemotePath;
+    QString m_pendingLocalPath;
+    QTemporaryDir m_openTempDir;
+    bool m_showFilePanel = false;
 
     //Whether to display the toolbar when connecting a device.
     bool show_toolbar = true;

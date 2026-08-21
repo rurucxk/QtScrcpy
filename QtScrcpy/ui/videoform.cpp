@@ -1,16 +1,28 @@
 // #include <QDesktopWidget>
+#include <QAbstractItemView>
 #include <QCoreApplication>
+#include <QDateTime>
+#include <QDesktopServices>
+#include <QDir>
+#include <QFileDialog>
 #include <QFileInfo>
+#include <QInputDialog>
 #include <QLabel>
+#include <QLineEdit>
+#include <QListWidget>
 #include <QMessageBox>
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPushButton>
 #include <QScreen>
 #include <QShortcut>
+#include <QSplitter>
 #include <QStyle>
 #include <QStyleOption>
 #include <QTimer>
+#include <QUrl>
+#include <QVBoxLayout>
 #include <QWindow>
 #include <QtWidgets/QHBoxLayout>
 
@@ -19,6 +31,7 @@
 #endif
 
 #include "config.h"
+#include "adbprocess.h"
 #include "iconhelper.h"
 #include "qyuvopenglwidget.h"
 #include "toolform.h"
@@ -29,6 +42,19 @@
 #ifdef Q_OS_MACOS
 #include "metalvideowindow.h"
 #endif
+
+namespace {
+const int FILE_PANEL_DEFAULT_WIDTH = 320;
+const int FILE_NAME_ROLE = Qt::UserRole;
+const int FILE_DIRECTORY_ROLE = Qt::UserRole + 1;
+
+QString shellQuote(const QString &value)
+{
+    QString quoted = value;
+    quoted.replace('\'', "'\\''");
+    return QString("'") + quoted + "'";
+}
+}
 
 VideoForm::VideoForm(bool framelessWindow, bool skin, bool showToolbar, int decodeMode, QWidget *parent) : QWidget(parent), ui(new Ui::videoForm), m_skin(skin), m_decodeMode(decodeMode)
 {
@@ -95,6 +121,8 @@ void VideoForm::initUI()
 #endif
     }
 
+    initFilePanel();
+
 #ifdef Q_OS_MACOS
     // Apple Silicon: 使用 VideoToolbox + Metal 渲染
     if (m_decodeMode == 1) {
@@ -131,6 +159,399 @@ void VideoForm::initUI()
         m_videoWidget->setMouseTracking(true);
     }
     ui->keepRatioWidget->setMouseTracking(true);
+}
+
+void VideoForm::initFilePanel()
+{
+    ui->verticalLayout->removeWidget(ui->keepRatioWidget);
+    m_splitter = new QSplitter(Qt::Horizontal, this);
+    m_splitter->setChildrenCollapsible(false);
+    m_splitter->addWidget(ui->keepRatioWidget);
+
+    m_filePanel = new QWidget(m_splitter);
+    m_filePanel->setMinimumWidth(280);
+    auto *panelLayout = new QVBoxLayout(m_filePanel);
+    panelLayout->setContentsMargins(6, 6, 6, 6);
+    panelLayout->setSpacing(6);
+
+    m_filePathEdit = new QLineEdit("/sdcard", m_filePanel);
+    m_filePathEdit->setPlaceholderText(tr("device path"));
+    panelLayout->addWidget(m_filePathEdit);
+
+    auto *toolLayout = new QHBoxLayout;
+    toolLayout->setContentsMargins(0, 0, 0, 0);
+    toolLayout->setSpacing(4);
+    auto makeButton = [this, toolLayout](QChar icon, const QString &toolTip) {
+        auto *button = new QPushButton(m_filePanel);
+        button->setFixedSize(30, 30);
+        button->setStyleSheet("padding: 0;");
+        button->setToolTip(toolTip);
+        IconHelper::Instance()->SetIcon(button, icon, 14);
+        toolLayout->addWidget(button);
+        return button;
+    };
+    m_fileUpBtn = makeButton(QChar(0xf062), tr("parent directory"));
+    m_fileRefreshBtn = makeButton(QChar(0xf021), tr("refresh"));
+    m_fileSortBtn = makeButton(QChar(0xf15d), tr("sort descending"));
+    m_fileSortBtn->setCheckable(true);
+    m_fileUploadBtn = makeButton(QChar(0xf093), tr("upload file"));
+    m_fileDownloadBtn = makeButton(QChar(0xf019), tr("download file"));
+    m_fileMkdirBtn = makeButton(QChar(0xf07b), tr("new directory"));
+    m_fileRemoveBtn = makeButton(QChar(0xf1f8), tr("delete"));
+    toolLayout->addStretch();
+    panelLayout->addLayout(toolLayout);
+
+    m_fileList = new QListWidget(m_filePanel);
+    m_fileList->setSelectionMode(QAbstractItemView::SingleSelection);
+    panelLayout->addWidget(m_fileList, 1);
+
+    m_fileStatus = new QLabel(m_filePanel);
+    m_fileStatus->setWordWrap(true);
+    m_fileStatus->setMinimumHeight(m_fileStatus->fontMetrics().height());
+    panelLayout->addWidget(m_fileStatus);
+
+    m_splitter->addWidget(m_filePanel);
+    m_splitter->setStretchFactor(0, 1);
+    m_splitter->setStretchFactor(1, 0);
+    m_splitter->setSizes(QList<int>() << width() << FILE_PANEL_DEFAULT_WIDTH);
+    ui->verticalLayout->addWidget(m_splitter);
+
+    m_showFilePanel = Config::getInstance().getUserBootConfig().showFilePanel;
+    m_filePanel->setVisible(m_showFilePanel);
+
+    m_fileAdb = new qsc::AdbProcess(this);
+    connect(m_fileAdb, &qsc::AdbProcess::adbProcessResult, this,
+            [this](qsc::AdbProcess::ADB_EXEC_RESULT result) { onFileAdbResult(static_cast<int>(result)); });
+    connect(m_filePathEdit, &QLineEdit::returnPressed, this, [this]() { loadFilePath(m_filePathEdit->text()); });
+    connect(m_fileUpBtn, &QPushButton::clicked, this, [this]() {
+        if (m_currentFilePath == "/") {
+            return;
+        }
+        const int slash = m_currentFilePath.lastIndexOf('/');
+        loadFilePath(slash <= 0 ? "/" : m_currentFilePath.left(slash));
+    });
+    connect(m_fileRefreshBtn, &QPushButton::clicked, this, &VideoForm::refreshFileList);
+    connect(m_fileSortBtn, &QPushButton::toggled, this, [this](bool descending) {
+        IconHelper::Instance()->SetIcon(m_fileSortBtn, QChar(descending ? 0xf15e : 0xf15d), 14);
+        m_fileSortBtn->setToolTip(descending ? tr("sort ascending") : tr("sort descending"));
+        m_fileList->sortItems(descending ? Qt::DescendingOrder : Qt::AscendingOrder);
+    });
+    connect(m_fileUploadBtn, &QPushButton::clicked, this, &VideoForm::uploadFile);
+    connect(m_fileDownloadBtn, &QPushButton::clicked, this, &VideoForm::downloadFile);
+    connect(m_fileMkdirBtn, &QPushButton::clicked, this, &VideoForm::createDirectory);
+    connect(m_fileRemoveBtn, &QPushButton::clicked, this, &VideoForm::removeFile);
+    connect(m_fileList, &QListWidget::itemDoubleClicked, this, &VideoForm::openFile);
+    connect(m_fileList, &QListWidget::currentItemChanged, this, [this]() { updateFileButtons(); });
+    updateFileButtons();
+}
+
+QString VideoForm::normalizeRemotePath(const QString &path) const
+{
+    if (path.trimmed().isEmpty() || !path.startsWith('/') || path.contains('\\')) {
+        return QString();
+    }
+    for (const QChar character : path) {
+        if (character.unicode() < 0x20) {
+            return QString();
+        }
+    }
+    const QStringList parts = path.split('/', Qt::SkipEmptyParts);
+    if (parts.contains(".") || parts.contains("..")) {
+        return QString();
+    }
+    const QString cleanPath = QDir::cleanPath(path);
+    return cleanPath.startsWith('/') ? cleanPath : QString();
+}
+
+bool VideoForm::isValidChildName(const QString &name) const
+{
+    if (name.trimmed().isEmpty() || name == "." || name == ".."
+        || name.contains('/') || name.contains('\\')) {
+        return false;
+    }
+    for (const QChar character : name) {
+        if (character.unicode() < 0x20) {
+            return false;
+        }
+    }
+    return true;
+}
+
+QString VideoForm::remoteChildPath(const QString &name) const
+{
+    return m_currentFilePath == "/" ? "/" + name : m_currentFilePath + "/" + name;
+}
+
+int VideoForm::filePanelWidth() const
+{
+    if (!m_filePanel || m_filePanel->isHidden()) {
+        return 0;
+    }
+    return qMax(m_filePanel->minimumWidth(), m_filePanel->width()) + m_splitter->handleWidth();
+}
+
+void VideoForm::setFilePanelVisible(bool visible, bool persist)
+{
+    if (!m_filePanel) {
+        return;
+    }
+
+    const bool changed = m_showFilePanel != visible;
+    const int panelWidth = visible ? FILE_PANEL_DEFAULT_WIDTH + m_splitter->handleWidth() : filePanelWidth();
+    m_showFilePanel = visible;
+    if (!isFullScreen()) {
+        m_filePanel->setVisible(visible);
+        if (changed) {
+            resize(qMax(1, width() + (visible ? panelWidth : -panelWidth)), height());
+            if (visible) {
+                m_splitter->setSizes(QList<int>() << qMax(1, width() - panelWidth) << FILE_PANEL_DEFAULT_WIDTH);
+                refreshFileList();
+            }
+        }
+    }
+
+    if (m_toolForm) {
+        m_toolForm->setFilePanelVisible(visible);
+        m_toolForm->move(pos().x() + geometry().width(), pos().y() + 30);
+    }
+    if (persist) {
+        UserBootConfig config = Config::getInstance().getUserBootConfig();
+        config.showFilePanel = visible;
+        Config::getInstance().setUserBootConfig(config);
+    }
+}
+
+void VideoForm::toggleFilePanel()
+{
+    setFilePanelVisible(!m_showFilePanel);
+}
+
+void VideoForm::loadFilePath(const QString &path)
+{
+    if (m_fileOperation != FO_NONE || m_serial.isEmpty()) {
+        return;
+    }
+    const QString normalized = normalizeRemotePath(path);
+    if (normalized.isEmpty()) {
+        QMessageBox::warning(this, "QtScrcpy", tr("invalid device path"), QMessageBox::Ok);
+        return;
+    }
+
+    m_pendingRemotePath = normalized;
+    m_pendingLocalPath.clear();
+    m_fileOperation = FO_LIST;
+    setFileBusy(true, tr("loading..."));
+    m_fileAdb->execute(m_serial, QStringList() << "shell" << "ls" << "-1Ap" << "--" << shellQuote(normalized));
+}
+
+void VideoForm::refreshFileList()
+{
+    loadFilePath(m_currentFilePath);
+}
+
+void VideoForm::uploadFile()
+{
+    if (m_fileOperation != FO_NONE) {
+        return;
+    }
+    const QString localPath = QFileDialog::getOpenFileName(this, tr("upload file"));
+    if (localPath.isEmpty()) {
+        return;
+    }
+    const QString name = QFileInfo(localPath).fileName();
+    if (!isValidChildName(name)) {
+        QMessageBox::warning(this, "QtScrcpy", tr("invalid file name"), QMessageBox::Ok);
+        return;
+    }
+
+    m_pendingLocalPath = localPath;
+    m_pendingRemotePath = remoteChildPath(name);
+    m_fileOperation = FO_PUSH;
+    setFileBusy(true, tr("uploading..."));
+    m_fileAdb->push(m_serial, localPath, m_pendingRemotePath);
+}
+
+void VideoForm::downloadFile()
+{
+    auto *item = m_fileList->currentItem();
+    if (!item || item->data(FILE_DIRECTORY_ROLE).toBool() || m_fileOperation != FO_NONE) {
+        return;
+    }
+    const QString name = item->data(FILE_NAME_ROLE).toString();
+    const QString localPath = QFileDialog::getSaveFileName(this, tr("download file"), QDir::home().filePath(name));
+    if (localPath.isEmpty()) {
+        return;
+    }
+
+    m_pendingRemotePath = remoteChildPath(name);
+    m_pendingLocalPath = localPath;
+    m_fileOperation = FO_PULL;
+    setFileBusy(true, tr("downloading..."));
+    m_fileAdb->execute(m_serial, QStringList() << "pull" << m_pendingRemotePath << localPath);
+}
+
+void VideoForm::openFile(QListWidgetItem *item)
+{
+    if (!item || m_fileOperation != FO_NONE) {
+        return;
+    }
+    const QString name = item->data(FILE_NAME_ROLE).toString();
+    if (item->data(FILE_DIRECTORY_ROLE).toBool()) {
+        loadFilePath(remoteChildPath(name));
+        return;
+    }
+    if (!m_openTempDir.isValid()) {
+        QMessageBox::warning(this, "QtScrcpy", tr("cannot create temporary directory"), QMessageBox::Ok);
+        return;
+    }
+
+    m_pendingRemotePath = remoteChildPath(name);
+    m_pendingLocalPath = QDir(m_openTempDir.path()).filePath(
+        QString::number(QDateTime::currentMSecsSinceEpoch()) + "_" + name);
+    m_fileOperation = FO_OPEN;
+    setFileBusy(true, tr("opening..."));
+    m_fileAdb->execute(m_serial, QStringList() << "pull" << m_pendingRemotePath << m_pendingLocalPath);
+}
+
+void VideoForm::createDirectory()
+{
+    if (m_fileOperation != FO_NONE) {
+        return;
+    }
+    bool accepted = false;
+    const QString name = QInputDialog::getText(this, tr("new directory"), tr("directory name"),
+                                               QLineEdit::Normal, QString(), &accepted);
+    if (!accepted) {
+        return;
+    }
+    if (!isValidChildName(name)) {
+        QMessageBox::warning(this, "QtScrcpy", tr("invalid directory name"), QMessageBox::Ok);
+        return;
+    }
+
+    m_pendingRemotePath = remoteChildPath(name);
+    m_fileOperation = FO_MKDIR;
+    setFileBusy(true, tr("creating..."));
+    m_fileAdb->execute(m_serial, QStringList() << "shell" << "mkdir" << "--" << shellQuote(m_pendingRemotePath));
+}
+
+void VideoForm::removeFile()
+{
+    auto *item = m_fileList->currentItem();
+    if (!item || m_fileOperation != FO_NONE) {
+        return;
+    }
+    const QString name = item->data(FILE_NAME_ROLE).toString();
+    if (!isValidChildName(name)) {
+        return;
+    }
+    const QString remotePath = remoteChildPath(name);
+    if (remotePath == "/" || normalizeRemotePath(remotePath).isEmpty()) {
+        return;
+    }
+    if (QMessageBox::Yes != QMessageBox::question(
+            this, tr("delete"), tr("Delete %1?\nThis action cannot be undone.").arg(remotePath),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No)) {
+        return;
+    }
+
+    const bool directory = item->data(FILE_DIRECTORY_ROLE).toBool();
+    m_pendingRemotePath = remotePath;
+    m_fileOperation = FO_REMOVE;
+    setFileBusy(true, tr("deleting..."));
+    m_fileAdb->execute(m_serial, QStringList() << "shell" << "rm" << (directory ? "-r" : "-f") << "--" << shellQuote(remotePath));
+}
+
+void VideoForm::updateFileButtons()
+{
+    if (!m_fileList) {
+        return;
+    }
+    const bool busy = m_fileOperation != FO_NONE;
+    auto *item = m_fileList->currentItem();
+    const bool fileSelected = item && !item->data(FILE_DIRECTORY_ROLE).toBool();
+    m_fileUpBtn->setEnabled(!busy && m_currentFilePath != "/");
+    m_fileRefreshBtn->setEnabled(!busy);
+    m_fileSortBtn->setEnabled(!busy);
+    m_fileUploadBtn->setEnabled(!busy);
+    m_fileDownloadBtn->setEnabled(!busy && fileSelected);
+    m_fileMkdirBtn->setEnabled(!busy);
+    m_fileRemoveBtn->setEnabled(!busy && item);
+}
+
+void VideoForm::setFileBusy(bool busy, const QString &status)
+{
+    m_filePathEdit->setEnabled(!busy);
+    m_fileList->setEnabled(!busy);
+    m_fileStatus->setText(status);
+    updateFileButtons();
+}
+
+void VideoForm::onFileAdbResult(int processResult)
+{
+    const auto result = static_cast<qsc::AdbProcess::ADB_EXEC_RESULT>(processResult);
+    if (result == qsc::AdbProcess::AER_SUCCESS_START || m_fileOperation == FO_NONE) {
+        return;
+    }
+
+    if (result != qsc::AdbProcess::AER_SUCCESS_EXEC) {
+        QString error = m_fileAdb->getErrorOut().trimmed();
+        if (error.isEmpty()) {
+            error = result == qsc::AdbProcess::AER_ERROR_MISSING_BINARY
+                ? tr("adb not found") : tr("ADB operation failed");
+        }
+        m_fileOperation = FO_NONE;
+        setFileBusy(false, error);
+        QMessageBox::warning(this, "QtScrcpy", error, QMessageBox::Ok);
+        return;
+    }
+
+    const FileOperation operation = m_fileOperation;
+    const QString output = m_fileAdb->getStdOut();
+    const QString localPath = m_pendingLocalPath;
+    const QString remotePath = m_pendingRemotePath;
+    m_fileOperation = FO_NONE;
+    setFileBusy(false, tr("complete"));
+
+    if (operation == FO_LIST) {
+        m_currentFilePath = remotePath;
+        m_filePathEdit->setText(remotePath);
+        m_fileList->clear();
+        QString normalizedOutput = output;
+        normalizedOutput.replace("\r\n", "\n");
+        const QStringList entries = normalizedOutput.split('\n', Qt::SkipEmptyParts);
+        for (QString name : entries) {
+            if (name.endsWith('\r')) {
+                name.chop(1);
+            }
+            const bool directory = name.endsWith('/');
+            if (directory) {
+                name.chop(1);
+            }
+            if (!isValidChildName(name)) {
+                continue;
+            }
+            auto *item = new QListWidgetItem(
+                style()->standardIcon(directory ? QStyle::SP_DirIcon : QStyle::SP_FileIcon), name, m_fileList);
+            item->setData(FILE_NAME_ROLE, name);
+            item->setData(FILE_DIRECTORY_ROLE, directory);
+        }
+        m_fileList->sortItems(m_fileSortBtn->isChecked() ? Qt::DescendingOrder : Qt::AscendingOrder);
+        m_fileStatus->setText(tr("%1 items").arg(m_fileList->count()));
+        updateFileButtons();
+        return;
+    }
+
+    if (operation == FO_OPEN) {
+        if (!QDesktopServices::openUrl(QUrl::fromLocalFile(localPath))) {
+            QMessageBox::warning(this, "QtScrcpy", tr("cannot open downloaded file"), QMessageBox::Ok);
+        }
+        return;
+    }
+
+    if (operation == FO_PUSH || operation == FO_MKDIR || operation == FO_REMOVE) {
+        refreshFileList();
+    }
 }
 
 QRect VideoForm::getGrabCursorRect()
@@ -182,12 +603,14 @@ void VideoForm::resizeSquare()
         qWarning() << "getScreenRect is empty";
         return;
     }
-    resize(screenRect.height(), screenRect.height());
+    resize(screenRect.height() + filePanelWidth(), screenRect.height());
 }
 
 void VideoForm::removeBlackRect()
 {
-    resize(ui->keepRatioWidget->goodSize());
+    QSize size = ui->keepRatioWidget->goodSize();
+    size.rwidth() += filePanelWidth();
+    resize(size);
 }
 
 void VideoForm::showFPS(bool show)
@@ -233,6 +656,9 @@ void VideoForm::setSerial(const QString &serial)
     if (m_flexDisplay) {
         ui->keepRatioWidget->setWidthHeightRatio(-1.0f);
     }
+    if (m_showFilePanel) {
+        refreshFileList();
+    }
 }
 
 void VideoForm::showToolForm(bool show)
@@ -241,6 +667,7 @@ void VideoForm::showToolForm(bool show)
         m_toolForm = new ToolForm(this, ToolForm::AP_OUTSIDE_RIGHT);
         m_toolForm->setSerial(m_serial);
     }
+    m_toolForm->setFilePanelVisible(m_showFilePanel);
     m_toolForm->move(pos().x() + geometry().width(), pos().y() + 30);
     m_toolForm->setVisible(show);
 }
@@ -536,6 +963,7 @@ void VideoForm::updateShowSize(const QSize &newSize)
             showSize.setWidth(showSize.width() + m.left() + m.right());
             showSize.setHeight(showSize.height() + m.top() + m.bottom());
         }
+        showSize.rwidth() += filePanelWidth();
 
         if (showSize != size()) {
             resize(showSize);
@@ -570,6 +998,7 @@ void VideoForm::switchFullScreen()
         }
 
         showNormal();
+        m_filePanel->setVisible(m_showFilePanel);
         // back to normal size.
         resize(m_normalSize);
         // fullscreen window will move (0,0). qt bug?
@@ -594,6 +1023,7 @@ void VideoForm::switchFullScreen()
 
         // record current size before fullscreen, it will be used to rollback size after exit fullscreen.
         m_normalSize = size();
+        m_filePanel->hide();
 
         m_fullScreenBeforePos = pos();
         // 这种临时增加标题栏再全屏的方案会导致收不到mousemove事件，导致setmousetrack失效
@@ -921,6 +1351,7 @@ void VideoForm::resizeEvent(QResizeEvent *event)
         return;
     }
     QSize curSize = size();
+    const int panelWidth = filePanelWidth();
     // 限制VideoForm尺寸不能小于keepRatioWidget good size
     if (m_widthHeightRatio > 1.0f) {
         // hor
@@ -929,12 +1360,13 @@ void VideoForm::resizeEvent(QResizeEvent *event)
         } else {
             setMinimumHeight(0);
         }
+        setMinimumWidth(0);
     } else {
         // ver
-        if (curSize.width() <= goodSize.width()) {
-            setMinimumWidth(goodSize.width());
+        if (curSize.width() <= goodSize.width() + panelWidth) {
+            setMinimumWidth(goodSize.width() + panelWidth);
         } else {
-            setMinimumWidth(0);
+            setMinimumWidth(panelWidth);
         }
     }
 }

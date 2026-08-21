@@ -14,7 +14,7 @@ struct UserBootConfig
     int lockOrientationIndex = 0;
     bool recordScreen     = false;
     bool recordBackground = false;
-    bool reverseConnect   = true;
+    bool reverseConnect   = false;
     bool showFPS          = false;
     bool windowOnTop      = false;
     bool autoOffScreen    = false;
@@ -22,7 +22,9 @@ struct UserBootConfig
     bool keepAlive        = false;
     bool simpleMode       = false;
     bool autoUpdateDevice = true;
+    bool autoConnectOnStartup = false;
     bool showToolbar      = true;
+    bool showFilePanel    = false;
     int decodeMode        = 0;  // 0=FFmpeg OpenGL (默认), 1=VideoToolbox Metal (Apple Silicon)
     int codecModeIndex    = 0;
     int presetLevel       = 1;  // optimization tier of the currently selected encoder preset

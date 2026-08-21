@@ -22,6 +22,7 @@ public:
     ~ToolForm();
 
     void setSerial(const QString& serial);
+    void setFilePanelVisible(bool visible);
     bool isHost();
 
 protected:
@@ -34,6 +35,7 @@ protected:
 
 private slots:
     void on_fullScreenBtn_clicked();
+    void on_filePanelBtn_clicked();
     void on_returnBtn_clicked();
     void on_homeBtn_clicked();
     void on_menuBtn_clicked();
