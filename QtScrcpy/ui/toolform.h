@@ -1,7 +1,9 @@
 #ifndef TOOLFORM_H
 #define TOOLFORM_H
 
+#include <QList>
 #include <QPointer>
+#include <QStringList>
 #include <QWidget>
 
 #include "../QtScrcpyCore/include/QtScrcpyCore.h"
@@ -13,6 +15,7 @@ namespace Ui
 }
 
 class Device;
+class QPushButton;
 class ToolForm : public MagneticWidget
 {
     Q_OBJECT
@@ -23,6 +26,7 @@ public:
 
     void setSerial(const QString& serial);
     void setFilePanelVisible(bool visible);
+    void setWindowOnTop(bool top);
     bool isHost();
 
 protected:
@@ -35,6 +39,7 @@ protected:
 
 private slots:
     void on_fullScreenBtn_clicked();
+    void on_windowOnTopBtn_clicked(bool checked);
     void on_filePanelBtn_clicked();
     void on_returnBtn_clicked();
     void on_homeBtn_clicked();
@@ -60,11 +65,17 @@ private:
     void initStyle();
     void updateGroupControl();
     void updateCameraMode();
+    QList<QPushButton *> toolbarButtons() const;
+    void applyToolbarOrder(const QStringList &order, const QStringList &hiddenButtons);
+    void showToolbarContextMenu(const QPoint &pos);
+    void editToolbarOrder();
 
 private:
     Ui::ToolForm *ui;
     QPoint m_dragPosition;
     QString m_serial;
+    QStringList m_defaultToolbarOrder;
+    QStringList m_hiddenToolbarButtons;
     bool m_showTouch = false;
     bool m_cameraTorch = false;
     bool m_isHost = false;

@@ -6,6 +6,7 @@
 #include <QPointer>
 #include <QRect>
 #include <QVariant>
+#include <QStringList>
 
 struct UserBootConfig
 {
@@ -28,6 +29,8 @@ struct UserBootConfig
     bool showToolbar      = true;
     bool quitOnClose      = false; // quit instead of hiding to the system tray when the main window is closed
     bool showFilePanel    = false;
+    QStringList toolbarOrder;
+    QStringList hiddenToolbarButtons;
     int decodeMode        = 0;  // 0=FFmpeg OpenGL (默认), 1=VideoToolbox Metal (Apple Silicon)
     int codecModeIndex    = 0;
     int presetLevel       = 1;  // optimization tier of the currently selected encoder preset
