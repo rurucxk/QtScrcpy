@@ -44,6 +44,9 @@ public:
     void toggleFilePanel();
     bool isHost();
 
+signals:
+    void windowOnTopChanged(bool top);
+
 private:
     void onFrame(int width, int height, uint8_t* dataY, uint8_t* dataU, uint8_t* dataV,
                  int linesizeY, int linesizeU, int linesizeV) override;

@@ -713,6 +713,9 @@ void VideoForm::showToolForm(bool show)
     if (!m_toolForm) {
         m_toolForm = new ToolForm(this, ToolForm::AP_OUTSIDE_RIGHT);
         m_toolForm->setSerial(m_serial);
+        const bool top = windowFlags().testFlag(Qt::WindowStaysOnTopHint);
+        m_toolForm->setWindowFlag(Qt::WindowStaysOnTopHint, top);
+        m_toolForm->setWindowOnTop(top);
     }
     m_toolForm->setFilePanelVisible(m_showFilePanel);
     m_toolForm->move(pos().x() + geometry().width(), pos().y() + 30);
@@ -1144,16 +1147,22 @@ void VideoForm::onFrameMetal(void *cvPixelBuffer, int width, int height)
 
 void VideoForm::staysOnTop(bool top)
 {
-    bool needShow = false;
-    if (isVisible()) {
-        needShow = true;
-    }
+    const bool changed = windowFlags().testFlag(Qt::WindowStaysOnTopHint) != top;
+    const bool needShow = isVisible();
+    const bool needShowTool = m_toolForm && m_toolForm->isVisible();
     setWindowFlag(Qt::WindowStaysOnTopHint, top);
     if (m_toolForm) {
         m_toolForm->setWindowFlag(Qt::WindowStaysOnTopHint, top);
+        m_toolForm->setWindowOnTop(top);
     }
     if (needShow) {
         show();
+    }
+    if (needShowTool) {
+        m_toolForm->show();
+    }
+    if (changed) {
+        emit windowOnTopChanged(top);
     }
 }
 

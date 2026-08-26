@@ -230,6 +230,46 @@
         <translation>工具</translation>
     </message>
     <message>
+        <source>always on top</source>
+        <translation>窗口置顶</translation>
+    </message>
+    <message>
+        <source>file manager</source>
+        <translation>文件管理</translation>
+    </message>
+    <message>
+        <source>adjust toolbar order</source>
+        <translation>调整工具栏顺序</translation>
+    </message>
+    <message>
+        <source>OK</source>
+        <translation>确定</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>取消</translation>
+    </message>
+    <message>
+        <source>toolbar buttons</source>
+        <translation>工具栏按钮</translation>
+    </message>
+    <message>
+        <source>deleted buttons</source>
+        <translation>已删除按钮</translation>
+    </message>
+    <message>
+        <source>delete selected button</source>
+        <translation>删除选中按钮</translation>
+    </message>
+    <message>
+        <source>restore selected button</source>
+        <translation>恢复选中按钮</translation>
+    </message>
+    <message>
+        <source>restore defaults</source>
+        <translation>恢复默认</translation>
+    </message>
+    <message>
         <source>touch switch</source>
         <translation>触摸显示开关</translation>
     </message>

@@ -86,6 +86,46 @@
         <translation>도구</translation>
     </message>
     <message>
+        <source>always on top</source>
+        <translation>항상 위에</translation>
+    </message>
+    <message>
+        <source>file manager</source>
+        <translation>파일 관리</translation>
+    </message>
+    <message>
+        <source>adjust toolbar order</source>
+        <translation>도구 모음 순서 조정</translation>
+    </message>
+    <message>
+        <source>OK</source>
+        <translation>확인</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>취소</translation>
+    </message>
+    <message>
+        <source>toolbar buttons</source>
+        <translation>도구 모음 버튼</translation>
+    </message>
+    <message>
+        <source>deleted buttons</source>
+        <translation>삭제된 버튼</translation>
+    </message>
+    <message>
+        <source>delete selected button</source>
+        <translation>선택한 버튼 삭제</translation>
+    </message>
+    <message>
+        <source>restore selected button</source>
+        <translation>선택한 버튼 복원</translation>
+    </message>
+    <message>
+        <source>restore defaults</source>
+        <translation>기본값 복원</translation>
+    </message>
+    <message>
         <source>full screen</source>
         <translation>전체 화면</translation>
     </message>

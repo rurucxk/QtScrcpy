@@ -1054,6 +1054,12 @@ void Dialog::onDeviceConnected(bool success, const QString &serial, const QStrin
         return;
     }
     auto videoForm = new VideoForm(ui->framelessCheck->isChecked(), Config::getInstance().getSkin(), ui->showToolbar->isChecked(), ui->decodeModeBox->currentIndex());
+    connect(videoForm, &VideoForm::windowOnTopChanged, this, [this](bool top) {
+        ui->alwaysTopCheck->setChecked(top);
+        UserBootConfig config = Config::getInstance().getUserBootConfig();
+        config.windowOnTop = top;
+        Config::getInstance().setUserBootConfig(config);
+    });
     videoForm->setSerial(serial);
 
     qsc::IDeviceManage::getInstance().getDevice(serial)->setUserData(static_cast<void*>(videoForm));

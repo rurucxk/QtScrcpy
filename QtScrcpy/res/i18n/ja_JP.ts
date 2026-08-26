@@ -230,6 +230,46 @@
         <translation>ツール</translation>
     </message>
     <message>
+        <source>always on top</source>
+        <translation>常に手前に表示</translation>
+    </message>
+    <message>
+        <source>file manager</source>
+        <translation>ファイル管理</translation>
+    </message>
+    <message>
+        <source>adjust toolbar order</source>
+        <translation>ツールバーの順序を調整</translation>
+    </message>
+    <message>
+        <source>OK</source>
+        <translation>OK</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>キャンセル</translation>
+    </message>
+    <message>
+        <source>toolbar buttons</source>
+        <translation>ツールバーボタン</translation>
+    </message>
+    <message>
+        <source>deleted buttons</source>
+        <translation>削除したボタン</translation>
+    </message>
+    <message>
+        <source>delete selected button</source>
+        <translation>選択したボタンを削除</translation>
+    </message>
+    <message>
+        <source>restore selected button</source>
+        <translation>選択したボタンを復元</translation>
+    </message>
+    <message>
+        <source>restore defaults</source>
+        <translation>デフォルトに戻す</translation>
+    </message>
+    <message>
         <source>touch switch</source>
         <translation>タッチ切り替え</translation>
     </message>

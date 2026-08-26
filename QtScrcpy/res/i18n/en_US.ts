@@ -230,6 +230,46 @@
         <translation>Tool</translation>
     </message>
     <message>
+        <source>always on top</source>
+        <translation>always on top</translation>
+    </message>
+    <message>
+        <source>file manager</source>
+        <translation>file manager</translation>
+    </message>
+    <message>
+        <source>adjust toolbar order</source>
+        <translation>adjust toolbar order</translation>
+    </message>
+    <message>
+        <source>OK</source>
+        <translation>OK</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>toolbar buttons</source>
+        <translation>toolbar buttons</translation>
+    </message>
+    <message>
+        <source>deleted buttons</source>
+        <translation>deleted buttons</translation>
+    </message>
+    <message>
+        <source>delete selected button</source>
+        <translation>delete selected button</translation>
+    </message>
+    <message>
+        <source>restore selected button</source>
+        <translation>restore selected button</translation>
+    </message>
+    <message>
+        <source>restore defaults</source>
+        <translation>restore defaults</translation>
+    </message>
+    <message>
         <source>touch switch</source>
         <translation>touch switch</translation>
     </message>

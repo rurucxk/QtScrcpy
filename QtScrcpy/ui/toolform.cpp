@@ -1,13 +1,25 @@
+#include <QApplication>
 #include <QDebug>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QHideEvent>
+#include <QHash>
+#include <QListWidget>
+#include <QLabel>
+#include <QMenu>
 #include <QMouseEvent>
+#include <QPushButton>
+#include <QSet>
 #include <QShowEvent>
+#include <QHBoxLayout>
+#include <QVBoxLayout>
 
 #include "iconhelper.h"
 #include "toolform.h"
 #include "ui_toolform.h"
 #include "videoform.h"
 #include "../groupcontroller/groupcontroller.h"
+#include "../util/config.h"
 
 ToolForm::ToolForm(QWidget *adsorbWidget, AdsorbPositions adsorbPos) : MagneticWidget(adsorbWidget, adsorbPos), ui(new Ui::ToolForm)
 {
@@ -18,6 +30,18 @@ ToolForm::ToolForm(QWidget *adsorbWidget, AdsorbPositions adsorbPos) : MagneticW
     updateGroupControl();
 
     initStyle();
+    for (QPushButton *button : toolbarButtons()) {
+        m_defaultToolbarOrder.append(button->objectName());
+    }
+    const UserBootConfig config = Config::getInstance().getUserBootConfig();
+    applyToolbarOrder(config.toolbarOrder, config.hiddenToolbarButtons);
+
+    setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(this, &QWidget::customContextMenuRequested, this, &ToolForm::showToolbarContextMenu);
+    for (QPushButton *button : toolbarButtons()) {
+        button->setContextMenuPolicy(Qt::CustomContextMenu);
+        connect(button, &QWidget::customContextMenuRequested, this, &ToolForm::showToolbarContextMenu);
+    }
 }
 
 ToolForm::~ToolForm()
@@ -36,9 +60,176 @@ void ToolForm::setFilePanelVisible(bool visible)
     ui->filePanelBtn->setChecked(visible);
 }
 
+void ToolForm::setWindowOnTop(bool top)
+{
+    ui->windowOnTopBtn->setChecked(top);
+    ui->windowOnTopBtn->setStyleSheet(top ? "color: #0078d4" : "");
+}
+
 bool ToolForm::isHost()
 {
     return m_isHost;
+}
+
+QList<QPushButton *> ToolForm::toolbarButtons() const
+{
+    QList<QPushButton *> buttons;
+    for (int i = 0; i < ui->verticalLayout->count(); ++i) {
+        if (auto *button = qobject_cast<QPushButton *>(ui->verticalLayout->itemAt(i)->widget())) {
+            buttons.append(button);
+        }
+    }
+    return buttons;
+}
+
+void ToolForm::applyToolbarOrder(const QStringList &order, const QStringList &hiddenButtons)
+{
+    const QList<QPushButton *> buttons = toolbarButtons();
+    QHash<QString, QPushButton *> buttonsByName;
+    for (QPushButton *button : buttons) {
+        buttonsByName.insert(button->objectName(), button);
+    }
+
+    QList<QPushButton *> orderedButtons;
+    QSet<QString> usedNames;
+    for (const QString &name : order) {
+        if (buttonsByName.contains(name) && !usedNames.contains(name)) {
+            orderedButtons.append(buttonsByName.value(name));
+            usedNames.insert(name);
+        }
+    }
+    for (QPushButton *button : buttons) {
+        if (!usedNames.contains(button->objectName())) {
+            orderedButtons.append(button);
+        }
+        ui->verticalLayout->removeWidget(button);
+    }
+
+    m_hiddenToolbarButtons.clear();
+    for (const QString &name : hiddenButtons) {
+        if (buttonsByName.contains(name) && !m_hiddenToolbarButtons.contains(name)) {
+            m_hiddenToolbarButtons.append(name);
+        }
+    }
+
+    for (QPushButton *button : orderedButtons) {
+        ui->verticalLayout->addWidget(button);
+    }
+
+    updateCameraMode();
+}
+
+void ToolForm::showToolbarContextMenu(const QPoint &pos)
+{
+    auto *source = qobject_cast<QWidget *>(sender());
+    QMenu menu(this);
+    QAction *editAction = menu.addAction(tr("adjust toolbar order"));
+    if (menu.exec((source ? source : this)->mapToGlobal(pos)) == editAction) {
+        editToolbarOrder();
+    }
+}
+
+void ToolForm::editToolbarOrder()
+{
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("adjust toolbar order"));
+    dialog.resize(420, 680);
+
+    auto *layout = new QVBoxLayout(&dialog);
+    layout->addWidget(new QLabel(tr("toolbar buttons"), &dialog));
+    auto *visibleList = new QListWidget(&dialog);
+    visibleList->setDragDropMode(QAbstractItemView::InternalMove);
+    visibleList->setDragEnabled(true);
+    visibleList->viewport()->setAcceptDrops(true);
+    visibleList->setDropIndicatorShown(true);
+    visibleList->setDragDropOverwriteMode(false);
+    visibleList->setDefaultDropAction(Qt::MoveAction);
+    auto *hiddenList = new QListWidget(&dialog);
+    QHash<QString, QPushButton *> buttonsByName;
+    auto addButtonItem = [](QListWidget *list, QPushButton *button) {
+        auto *item = new QListWidgetItem(button->toolTip());
+        item->setFlags(item->flags() | Qt::ItemIsDragEnabled);
+        item->setData(Qt::UserRole, button->objectName());
+        list->addItem(item);
+    };
+    for (QPushButton *button : toolbarButtons()) {
+        buttonsByName.insert(button->objectName(), button);
+        addButtonItem(m_hiddenToolbarButtons.contains(button->objectName()) ? hiddenList : visibleList, button);
+    }
+    layout->addWidget(visibleList, 2);
+
+    auto *moveButtonsLayout = new QHBoxLayout;
+    auto *deleteButton = new QPushButton(tr("delete selected button"), &dialog);
+    auto *restoreButton = new QPushButton(tr("restore selected button"), &dialog);
+    deleteButton->setEnabled(false);
+    restoreButton->setEnabled(false);
+    moveButtonsLayout->addWidget(deleteButton);
+    moveButtonsLayout->addWidget(restoreButton);
+    layout->addLayout(moveButtonsLayout);
+
+    layout->addWidget(new QLabel(tr("deleted buttons"), &dialog));
+    layout->addWidget(hiddenList, 1);
+
+    connect(visibleList, &QListWidget::currentRowChanged, deleteButton, [deleteButton](int row) {
+        deleteButton->setEnabled(row >= 0);
+    });
+    connect(hiddenList, &QListWidget::currentRowChanged, restoreButton, [restoreButton](int row) {
+        restoreButton->setEnabled(row >= 0);
+    });
+    connect(deleteButton, &QPushButton::clicked, &dialog, [visibleList, hiddenList]() {
+        if (visibleList->currentRow() >= 0) {
+            hiddenList->addItem(visibleList->takeItem(visibleList->currentRow()));
+        }
+    });
+    connect(restoreButton, &QPushButton::clicked, &dialog, [visibleList, hiddenList]() {
+        if (hiddenList->currentRow() >= 0) {
+            visibleList->addItem(hiddenList->takeItem(hiddenList->currentRow()));
+        }
+    });
+
+    auto *buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    auto *resetButton = buttonBox->addButton(tr("restore defaults"), QDialogButtonBox::ResetRole);
+    buttonBox->button(QDialogButtonBox::Ok)->setText(tr("OK"));
+    buttonBox->button(QDialogButtonBox::Cancel)->setText(tr("Cancel"));
+    connect(resetButton, &QPushButton::clicked, &dialog,
+            [this, visibleList, hiddenList, buttonsByName, addButtonItem]() {
+        visibleList->clear();
+        hiddenList->clear();
+        for (const QString &name : m_defaultToolbarOrder) {
+            if (buttonsByName.contains(name)) {
+                addButtonItem(visibleList, buttonsByName.value(name));
+            }
+        }
+    });
+    connect(buttonBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(buttonBox);
+
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+
+    QStringList order;
+    QStringList hiddenButtons;
+    for (int i = 0; i < visibleList->count(); ++i) {
+        order.append(visibleList->item(i)->data(Qt::UserRole).toString());
+    }
+    for (int i = 0; i < hiddenList->count(); ++i) {
+        const QString name = hiddenList->item(i)->data(Qt::UserRole).toString();
+        order.append(name);
+        hiddenButtons.append(name);
+    }
+
+    UserBootConfig config = Config::getInstance().getUserBootConfig();
+    config.toolbarOrder = order;
+    config.hiddenToolbarButtons = hiddenButtons;
+    Config::getInstance().setUserBootConfig(config);
+
+    for (QWidget *widget : QApplication::topLevelWidgets()) {
+        if (auto *toolForm = qobject_cast<ToolForm *>(widget)) {
+            toolForm->applyToolbarOrder(order, hiddenButtons);
+        }
+    }
 }
 
 void ToolForm::updateCameraMode()
@@ -46,29 +237,38 @@ void ToolForm::updateCameraMode()
     auto device = qsc::IDeviceManage::getInstance().getDevice(m_serial);
     const bool camera = device && device->isCameraMode();
 
-    ui->groupControlBtn->setVisible(!camera);
-    ui->expandNotifyBtn->setVisible(!camera);
-    ui->expandSettingsBtn->setVisible(!camera);
-    ui->rotateBtn->setVisible(!camera);
-    ui->touchBtn->setVisible(!camera);
-    ui->openScreenBtn->setVisible(!camera);
-    ui->closeScreenBtn->setVisible(!camera);
-    ui->powerBtn->setVisible(!camera);
-    ui->volumeUpBtn->setVisible(!camera);
-    ui->volumeDownBtn->setVisible(!camera);
-    ui->appSwitchBtn->setVisible(!camera);
-    ui->menuBtn->setVisible(!camera);
-    ui->homeBtn->setVisible(!camera);
-    ui->returnBtn->setVisible(!camera);
-    ui->clipboardBtn->setVisible(!camera);
-    ui->cameraTorchBtn->setVisible(camera);
-    ui->cameraZoomOutBtn->setVisible(camera);
-    ui->cameraZoomInBtn->setVisible(camera);
+    auto setButtonVisible = [this](QPushButton *button, bool modeVisible) {
+        button->setVisible(modeVisible && !m_hiddenToolbarButtons.contains(button->objectName()));
+    };
+    for (QPushButton *button : toolbarButtons()) {
+        setButtonVisible(button, true);
+    }
+    setButtonVisible(ui->groupControlBtn, !camera);
+    setButtonVisible(ui->expandNotifyBtn, !camera);
+    setButtonVisible(ui->expandSettingsBtn, !camera);
+    setButtonVisible(ui->rotateBtn, !camera);
+    setButtonVisible(ui->touchBtn, !camera);
+    setButtonVisible(ui->openScreenBtn, !camera);
+    setButtonVisible(ui->closeScreenBtn, !camera);
+    setButtonVisible(ui->powerBtn, !camera);
+    setButtonVisible(ui->volumeUpBtn, !camera);
+    setButtonVisible(ui->volumeDownBtn, !camera);
+    setButtonVisible(ui->appSwitchBtn, !camera);
+    setButtonVisible(ui->menuBtn, !camera);
+    setButtonVisible(ui->homeBtn, !camera);
+    setButtonVisible(ui->returnBtn, !camera);
+    setButtonVisible(ui->clipboardBtn, !camera);
+    setButtonVisible(ui->cameraTorchBtn, camera);
+    setButtonVisible(ui->cameraZoomOutBtn, camera);
+    setButtonVisible(ui->cameraZoomInBtn, camera);
+    ui->verticalLayout->activate();
+    resize(width(), sizeHint().height());
 }
 
 void ToolForm::initStyle()
 {
     IconHelper::Instance()->SetIcon(ui->fullScreenBtn, QChar(0xf0b2), 15);
+    IconHelper::Instance()->SetIcon(ui->windowOnTopBtn, QChar(0xf08d), 15);
     IconHelper::Instance()->SetIcon(ui->filePanelBtn, QChar(0xf07b), 15);
     IconHelper::Instance()->SetIcon(ui->menuBtn, QChar(0xf096), 15);
     IconHelper::Instance()->SetIcon(ui->homeBtn, QChar(0xf1db), 15);
@@ -152,6 +352,14 @@ void ToolForm::on_fullScreenBtn_clicked()
     }
 
     dynamic_cast<VideoForm*>(parent())->switchFullScreen();
+}
+
+void ToolForm::on_windowOnTopBtn_clicked(bool checked)
+{
+    auto videoForm = dynamic_cast<VideoForm*>(parent());
+    if (videoForm) {
+        videoForm->staysOnTop(checked);
+    }
 }
 
 void ToolForm::on_filePanelBtn_clicked()

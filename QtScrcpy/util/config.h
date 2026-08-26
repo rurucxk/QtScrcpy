@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QPointer>
 #include <QRect>
+#include <QStringList>
 
 struct UserBootConfig
 {
@@ -25,6 +26,8 @@ struct UserBootConfig
     bool autoConnectOnStartup = false;
     bool showToolbar      = true;
     bool showFilePanel    = false;
+    QStringList toolbarOrder;
+    QStringList hiddenToolbarButtons;
     int decodeMode        = 0;  // 0=FFmpeg OpenGL (默认), 1=VideoToolbox Metal (Apple Silicon)
     int codecModeIndex    = 0;
     int presetLevel       = 1;  // optimization tier of the currently selected encoder preset
