@@ -353,6 +353,12 @@
 <context>
     <name>VideoForm</name>
     <message>
+        <source>Delete %1 selected items in %2?
+This action cannot be undone.</source>
+        <translation>确定删除 %2 中选中的 %1 项吗？
+此操作无法撤销。</translation>
+    </message>
+    <message>
         <source>file does not exist</source>
         <translation>文件不存在</translation>
     </message>
