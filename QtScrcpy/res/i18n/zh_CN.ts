@@ -353,6 +353,38 @@
 <context>
     <name>VideoForm</name>
     <message>
+        <source>OK</source>
+        <translation>确定</translation>
+    </message>
+    <message>
+        <source>APK installation</source>
+        <translation>APK 安装</translation>
+    </message>
+    <message>
+        <source>Installing APK: %1</source>
+        <translation>正在安装 APK：%1</translation>
+    </message>
+    <message>
+        <source>Installing APKs... %1/%2 completed</source>
+        <translation>正在安装 APK，已完成 %1/%2 项</translation>
+    </message>
+    <message>
+        <source>APK installed successfully.</source>
+        <translation>APK 安装成功。</translation>
+    </message>
+    <message>
+        <source>APK installation failed.</source>
+        <translation>APK 安装失败。</translation>
+    </message>
+    <message>
+        <source>APK installation finished: %1 succeeded, %2 failed.</source>
+        <translation>APK 安装完成：成功 %1 项，失败 %2 项。</translation>
+    </message>
+    <message>
+        <source>See the main window log for failure details.</source>
+        <translation>失败详情请查看主窗口日志。</translation>
+    </message>
+    <message>
         <source>Delete %1 selected items in %2?
 This action cannot be undone.</source>
         <translation>确定删除 %2 中选中的 %1 项吗？

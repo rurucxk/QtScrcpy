@@ -55,6 +55,8 @@ private:
     void updateFPS(quint32 fps) override;
     void onVideoSessionChanged(const QSize &size, bool clientResized) override;
     void grabCursor(bool grab) override;
+    void installApkRequest(const QString &apkFile) override;
+    void showApkStatus(const QString &text);
 
     void updateStyleSheet(bool vertical);
     QMargins getMargins(bool vertical);
@@ -118,6 +120,11 @@ private:
     QPointer<MetalVideoWidget> m_metalWidget;
 
     QPointer<QLabel> m_fpsLabel;
+    QPointer<QLabel> m_apkStatus;
+    QTimer m_apkStatusTimer;
+    int m_apkPending = 0;
+    int m_apkSucceeded = 0;
+    int m_apkFailed = 0;
     QPointer<QSplitter> m_splitter;
     QPointer<QWidget> m_filePanel;
     QPointer<QLineEdit> m_filePathEdit;

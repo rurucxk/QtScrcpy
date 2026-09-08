@@ -33,6 +33,7 @@
 
 #include "config.h"
 #include "adbprocess.h"
+#include "../QtScrcpyCore/src/device/filehandler/filehandler.h"
 #include "iconhelper.h"
 #include "qyuvopenglwidget.h"
 #include "toolform.h"
@@ -123,6 +124,17 @@ void VideoForm::initUI()
     }
 
     initFilePanel();
+
+    m_apkStatus = new QLabel(ui->keepRatioWidget);
+    m_apkStatus->setTextFormat(Qt::PlainText);
+    m_apkStatus->setWordWrap(true);
+    m_apkStatus->setAttribute(Qt::WA_TransparentForMouseEvents);
+    m_apkStatus->setStyleSheet("color: #ffffff; background: #252525; border: 1px solid #454545; "
+                               "border-radius: 6px; padding: 8px 12px; font-size: 13px;");
+    m_apkStatus->hide();
+    ui->keepRatioWidget->installEventFilter(this);
+    m_apkStatusTimer.setSingleShot(true);
+    connect(&m_apkStatusTimer, &QTimer::timeout, m_apkStatus, &QLabel::hide);
 
 #ifdef Q_OS_MACOS
     // Apple Silicon: 使用 VideoToolbox + Metal 渲染
@@ -256,6 +268,10 @@ void VideoForm::initFilePanel()
 
 bool VideoForm::eventFilter(QObject *watched, QEvent *event)
 {
+    if (watched == ui->keepRatioWidget && event->type() == QEvent::Resize
+        && m_apkStatus && !m_apkStatus->isHidden()) {
+        showApkStatus(m_apkStatus->text());
+    }
     auto *button = qobject_cast<QPushButton *>(watched);
     if (button && event->type() == QEvent::Enter) {
         m_fileToolTip->setText(button->toolTip());
@@ -717,6 +733,52 @@ void VideoForm::setSerial(const QString &serial)
 {
     m_serial = serial;
     auto device = qsc::IDeviceManage::getInstance().getDevice(m_serial);
+    auto *fileHandler = device ? device->findChild<FileHandler *>() : nullptr;
+    if (fileHandler) {
+        connect(fileHandler, &FileHandler::fileHandlerResult, this,
+                [this](FileHandler::FILE_HANDLER_RESULT result, bool isApk) {
+            if (!isApk || m_apkPending == 0
+                || (result != FileHandler::FAR_SUCCESS_EXEC && result != FileHandler::FAR_ERROR_EXEC)) {
+                return;
+            }
+            --m_apkPending;
+            if (result == FileHandler::FAR_SUCCESS_EXEC) {
+                ++m_apkSucceeded;
+            } else {
+                ++m_apkFailed;
+            }
+            const int completed = m_apkSucceeded + m_apkFailed;
+            if (m_apkPending > 0) {
+                showApkStatus(tr("Installing APKs... %1/%2 completed")
+                                  .arg(completed).arg(completed + m_apkPending));
+                return;
+            }
+            QString message = completed == 1
+                ? (m_apkFailed ? tr("APK installation failed.") : tr("APK installed successfully."))
+                : tr("APK installation finished: %1 succeeded, %2 failed.")
+                      .arg(m_apkSucceeded).arg(m_apkFailed);
+            if (m_apkFailed) {
+                message += "\n" + tr("See the main window log for failure details.");
+            }
+            if (!m_apkFailed) {
+                showApkStatus(message);
+                m_apkStatusTimer.start(3000);
+                return;
+            }
+            m_apkStatus->hide();
+            auto *notice = new QMessageBox(QMessageBox::NoIcon, tr("APK installation"),
+                                           message, QMessageBox::Ok, this);
+            notice->setAttribute(Qt::WA_DeleteOnClose);
+            notice->setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint);
+            notice->setTextFormat(Qt::PlainText);
+            notice->setStyleSheet("QMessageBox { background: #252525; border: 1px solid #454545; } "
+                                  "QLabel { color: #ffffff; background: transparent; border: none; "
+                                  "padding: 12px; font-size: 14px; } "
+                                  "QPushButton { min-width: 72px; min-height: 30px; padding: 0 12px; }");
+            notice->button(QMessageBox::Ok)->setText(tr("OK"));
+            notice->open();
+        });
+    }
     m_flexDisplay = device && device->isFlexDisplay();
     if (m_flexDisplay) {
         ui->keepRatioWidget->setWidthHeightRatio(-1.0f);
@@ -1495,4 +1557,29 @@ void VideoForm::dropEvent(QDropEvent *event)
         }
         emit device->pushFileRequest(file, Config::getInstance().getPushFilePath() + fileInfo.fileName());
     }
+}
+
+void VideoForm::installApkRequest(const QString &apkFile)
+{
+    m_apkStatusTimer.stop();
+    if (m_apkPending == 0) {
+        m_apkSucceeded = 0;
+        m_apkFailed = 0;
+    }
+    ++m_apkPending;
+    const int completed = m_apkSucceeded + m_apkFailed;
+    showApkStatus(m_apkPending + completed == 1
+        ? tr("Installing APK: %1").arg(QFileInfo(apkFile).fileName())
+        : tr("Installing APKs... %1/%2 completed").arg(completed).arg(completed + m_apkPending));
+}
+
+void VideoForm::showApkStatus(const QString &text)
+{
+    m_apkStatus->setText(text);
+    const int availableWidth = qMax(1, ui->keepRatioWidget->width() - 24);
+    m_apkStatus->setFixedWidth(qMin(360, availableWidth));
+    m_apkStatus->adjustSize();
+    m_apkStatus->move((ui->keepRatioWidget->width() - m_apkStatus->width()) / 2, 12);
+    m_apkStatus->raise();
+    m_apkStatus->show();
 }
