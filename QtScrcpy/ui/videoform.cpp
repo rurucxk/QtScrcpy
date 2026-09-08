@@ -226,7 +226,7 @@ void VideoForm::initFilePanel()
     m_fileToolTip->hide();
 
     m_fileList = new QListWidget(m_filePanel);
-    m_fileList->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_fileList->setSelectionMode(QAbstractItemView::ExtendedSelection);
     m_fileList->setUniformItemSizes(true);
     panelLayout->addWidget(m_fileList, 1);
 
@@ -266,7 +266,7 @@ void VideoForm::initFilePanel()
     connect(m_fileMkdirBtn, &QPushButton::clicked, this, &VideoForm::createDirectory);
     connect(m_fileRemoveBtn, &QPushButton::clicked, this, &VideoForm::removeFile);
     connect(m_fileList, &QListWidget::itemDoubleClicked, this, &VideoForm::openFile);
-    connect(m_fileList, &QListWidget::currentItemChanged, this, [this]() { updateFileButtons(); });
+    connect(m_fileList, &QListWidget::itemSelectionChanged, this, [this]() { updateFileButtons(); });
     updateFileButtons();
 }
 
@@ -289,6 +289,7 @@ bool VideoForm::eventFilter(QObject *watched, QEvent *event)
 
 void VideoForm::sortFileList()
 {
+    const auto selected = m_fileList->selectedItems();
     m_fileList->sortItems(m_fileSortBtn->isChecked() ? Qt::DescendingOrder : Qt::AscendingOrder);
     auto *current = m_fileList->currentItem();
     QList<QListWidgetItem *> directories;
@@ -304,7 +305,10 @@ void VideoForm::sortFileList()
         m_fileList->addItem(item);
     }
     if (current) {
-        m_fileList->setCurrentItem(current);
+        m_fileList->setCurrentItem(current, QItemSelectionModel::NoUpdate);
+    }
+    for (auto *item : selected) {
+        item->setSelected(true);
     }
 }
 
@@ -437,7 +441,8 @@ void VideoForm::uploadFile()
 
 void VideoForm::downloadFile()
 {
-    auto *item = m_fileList->currentItem();
+    const auto selected = m_fileList->selectedItems();
+    auto *item = selected.size() == 1 ? selected.first() : nullptr;
     if (!item || item->data(FILE_DIRECTORY_ROLE).toBool() || m_fileOperation != FO_NONE) {
         return;
     }
@@ -501,29 +506,39 @@ void VideoForm::createDirectory()
 
 void VideoForm::removeFile()
 {
-    auto *item = m_fileList->currentItem();
-    if (!item || m_fileOperation != FO_NONE) {
+    const auto selected = m_fileList->selectedItems();
+    if (selected.isEmpty() || m_fileOperation != FO_NONE) {
         return;
     }
-    const QString name = item->data(FILE_NAME_ROLE).toString();
-    if (!isValidChildName(name)) {
-        return;
+    QStringList paths;
+    QStringList commands;
+    for (auto *item : selected) {
+        const QString name = item->data(FILE_NAME_ROLE).toString();
+        const QString remotePath = remoteChildPath(name);
+        if (!isValidChildName(name) || remotePath == "/" || normalizeRemotePath(remotePath).isEmpty()) {
+            return;
+        }
+        paths.append(remotePath);
+        commands.append(QString("rm %1 -- %2")
+                            .arg(item->data(FILE_DIRECTORY_ROLE).toBool() ? "-r" : "-f", shellQuote(remotePath)));
     }
-    const QString remotePath = remoteChildPath(name);
-    if (remotePath == "/" || normalizeRemotePath(remotePath).isEmpty()) {
-        return;
+    QMessageBox confirmation(QMessageBox::Question, tr("delete"),
+        paths.size() == 1 ? tr("Delete %1?\nThis action cannot be undone.").arg(paths.first())
+                         : tr("Delete %1 selected items in %2?\nThis action cannot be undone.")
+                               .arg(paths.size()).arg(m_currentFilePath),
+        QMessageBox::Yes | QMessageBox::No, this);
+    confirmation.setDefaultButton(QMessageBox::No);
+    if (paths.size() > 1) {
+        confirmation.setDetailedText(paths.join('\n'));
     }
-    if (QMessageBox::Yes != QMessageBox::question(
-            this, tr("delete"), tr("Delete %1?\nThis action cannot be undone.").arg(remotePath),
-            QMessageBox::Yes | QMessageBox::No, QMessageBox::No)) {
+    if (confirmation.exec() != QMessageBox::Yes) {
         return;
     }
 
-    const bool directory = item->data(FILE_DIRECTORY_ROLE).toBool();
-    m_pendingRemotePath = remotePath;
+    m_pendingRemotePath = m_currentFilePath;
     m_fileOperation = FO_REMOVE;
     setFileBusy(true, tr("deleting..."));
-    m_fileAdb->execute(m_serial, QStringList() << "shell" << "rm" << (directory ? "-r" : "-f") << "--" << shellQuote(remotePath));
+    m_fileAdb->execute(m_serial, QStringList() << "shell" << commands.join(" && "));
 }
 
 void VideoForm::updateFileButtons()
@@ -532,15 +547,15 @@ void VideoForm::updateFileButtons()
         return;
     }
     const bool busy = m_fileOperation != FO_NONE;
-    auto *item = m_fileList->currentItem();
-    const bool fileSelected = item && !item->data(FILE_DIRECTORY_ROLE).toBool();
+    const auto selected = m_fileList->selectedItems();
+    const bool fileSelected = selected.size() == 1 && !selected.first()->data(FILE_DIRECTORY_ROLE).toBool();
     m_fileUpBtn->setEnabled(!busy && m_currentFilePath != "/");
     m_fileRefreshBtn->setEnabled(!busy);
     m_fileSortBtn->setEnabled(!busy);
     m_fileUploadBtn->setEnabled(!busy);
     m_fileDownloadBtn->setEnabled(!busy && fileSelected);
     m_fileMkdirBtn->setEnabled(!busy);
-    m_fileRemoveBtn->setEnabled(!busy && item);
+    m_fileRemoveBtn->setEnabled(!busy && !selected.isEmpty());
 }
 
 void VideoForm::setFileBusy(bool busy, const QString &status)
@@ -564,8 +579,12 @@ void VideoForm::onFileAdbResult(int processResult)
             error = result == qsc::AdbProcess::AER_ERROR_MISSING_BINARY
                 ? tr("adb not found") : tr("ADB operation failed");
         }
+        const bool refreshAfterFailure = m_fileOperation == FO_REMOVE;
         m_fileOperation = FO_NONE;
         setFileBusy(false, error);
+        if (refreshAfterFailure) {
+            refreshFileList();
+        }
         QMessageBox::warning(this, "QtScrcpy", error, QMessageBox::Ok);
         return;
     }
