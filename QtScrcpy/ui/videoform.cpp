@@ -408,7 +408,7 @@ void VideoForm::loadFilePath(const QString &path)
     m_pendingLocalPath.clear();
     m_fileOperation = FO_LIST;
     setFileBusy(true, tr("loading..."));
-    const QString command = QString("ls -1Ap -- %1 | tr '\\n' '\\000'").arg(shellQuote(normalized));
+    const QString command = QString("set -o pipefail && ls -1Ap -- %1 | base64").arg(shellQuote(normalized));
     m_fileAdb->execute(m_serial, QStringList() << "shell" << command);
 }
 
@@ -600,7 +600,8 @@ void VideoForm::onFileAdbResult(int processResult)
         m_currentFilePath = remotePath;
         m_filePathEdit->setText(remotePath);
         m_fileList->clear();
-        const QStringList entries = output.split(QChar('\0'), Qt::SkipEmptyParts);
+        const QStringList entries = QString::fromUtf8(QByteArray::fromBase64(output.toLatin1()))
+                                        .split('\n', Qt::SkipEmptyParts);
         for (QString name : entries) {
             if (name.endsWith('\r')) {
                 name.chop(1);
